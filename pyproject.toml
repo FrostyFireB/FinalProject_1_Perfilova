@@ -1,0 +1,22 @@
+[project]
+name = "finalproject_1_perfilova"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "FrostyFire",email = "FrostyFire777@yandex.ru"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "prettytable (>=3.17.0,<4.0.0)"
+]
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.9.0"
+
+[tool.poetry.scripts]
+project = "finalproject_1_perfilova.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

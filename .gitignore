@@ -1,0 +1,14 @@
+# poetry / venv
+.venv/
+
+# python
+__pycache__/
+*.py[cod]
+
+# builds
+dist/
+build/
+*.egg-info/
+
+# tools
+.ruff_cache/
