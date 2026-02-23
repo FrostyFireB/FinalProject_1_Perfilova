@@ -15,7 +15,7 @@ dependencies = [
 ruff = "^0.9.0"
 
 [tool.poetry.scripts]
-project = "finalproject_1_perfilova.cli:main"
+project = "finalproject_1_perfilova.cli.interface:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

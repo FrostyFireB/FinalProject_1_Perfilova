@@ -12,3 +12,6 @@ build/
 
 # tools
 .ruff_cache/
+
+# data
+data/session.json
