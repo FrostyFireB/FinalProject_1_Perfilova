@@ -20,3 +20,9 @@ project = "finalproject_1_perfilova.cli.interface:main"
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.valutatrade]
+DATA_DIR = "data"
+RATES_TTL_SECONDS = 300
+BASE_CURRENCY = "USD"
+LOG_DIR = "logs"

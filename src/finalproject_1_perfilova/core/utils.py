@@ -2,12 +2,16 @@ import json
 from pathlib import Path
 
 
-def project_root():
-    return Path(__file__).resolve().parents[3]
-
-
 def data_dir():
-    return project_root() / "data"
+    cwd = Path.cwd()
+    if (cwd / "data").exists():
+        return cwd / "data"
+    
+    for parent in cwd.parents:
+        if (parent / "data").exists():
+            return parent / "data"
+
+    return Path(__file__).resolve().parents[3] / "data"
 
 
 def read_json(filename, default):

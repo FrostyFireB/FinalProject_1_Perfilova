@@ -1,5 +1,7 @@
 import argparse
 
+from finalproject_1_perfilova.logging_config import setup_logging
+
 from finalproject_1_perfilova.core.usecases import (
     register_user,
     login_user,
@@ -9,8 +11,17 @@ from finalproject_1_perfilova.core.usecases import (
     get_rate,
 )
 
+from finalproject_1_perfilova.core.exceptions import (
+    InsufficientFundsError,
+    CurrencyNotFoundError,
+    ApiRequestError,
+    WalletNotFoundError,
+)
+
 
 def main():
+    setup_logging()
+
     parser = argparse.ArgumentParser(prog="project")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -76,6 +87,20 @@ def main():
                 f"Обратный курс {args.to_cur.upper()}-{args.from_cur.upper()}: "
                 f"{(1.0 / rate):.2f}"
             )
+
+    except InsufficientFundsError as e:
+        print(str(e))
+
+    except WalletNotFoundError as e:
+        print(str(e))
+
+    except CurrencyNotFoundError as e:
+        print(str(e))
+        print("Подсказка: используйте get-rate или проверьте код валюты (USD, EUR, RUB, BTC, ETH).")
+
+    except ApiRequestError as e:
+        print(str(e))
+        print("Подсказка: повторите попытку позже или проверьте подключение к интернету.")
 
     except Exception as e:
         print(str(e))

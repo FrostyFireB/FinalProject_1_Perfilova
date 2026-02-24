@@ -1,12 +1,19 @@
 from datetime import datetime
 
-from finalproject_1_perfilova.core.models import User, Portfolio, Wallet
-from finalproject_1_perfilova.core.utils import read_json, write_json
+from finalproject_1_perfilova.core.models import User, Portfolio
+from finalproject_1_perfilova.decorators import log_action
+from finalproject_1_perfilova.infra.database import DatabaseManager
+from finalproject_1_perfilova.core.currencies import get_currency
+from finalproject_1_perfilova.core.exceptions import WalletNotFoundError, InsufficientFundsError, ApiRequestError
+from finalproject_1_perfilova.infra.settings import SettingsLoader
 
 
 USERS_FILE = "users.json"
 PORTFOLIOS_FILE = "portfolios.json"
 SESSION_FILE = "session.json"
+
+
+db = DatabaseManager()
 
 
 def _next_user_id(users: list[dict]):
@@ -20,7 +27,7 @@ def _next_user_id(users: list[dict]):
 
 
 def register_user(username: str, password: str):
-    users = read_json(USERS_FILE, [])
+    users = db.read(USERS_FILE, [])
     for u in users:
         if u["username"] == username:
             raise ValueError(f"Имя пользователя '{username}' уже занято")
@@ -30,17 +37,17 @@ def register_user(username: str, password: str):
     user = User.create_new(user_id=user_id, username=username, password=password)
     
     users.append(user.to_dict())
-    write_json(USERS_FILE, users)
+    db.write(USERS_FILE, users)
 
-    portfolios = read_json(PORTFOLIOS_FILE, [])
+    portfolios = db.read(PORTFOLIOS_FILE, [])
     portfolios.append(Portfolio(user_id=user.user_id, wallets={}).to_dict())
-    write_json(PORTFOLIOS_FILE, portfolios)
+    db.write(PORTFOLIOS_FILE, portfolios)
 
     return user
 
 
 def login_user(username: str, password: str):
-    users = read_json(USERS_FILE, [])
+    users = db.read(USERS_FILE, [])
 
     found = None
     for u in users:
@@ -61,13 +68,13 @@ def login_user(username: str, password: str):
         "username": user.username,
         "logged_in_at": datetime.now().isoformat(timespec="seconds"),
     }
-    write_json(SESSION_FILE, session)
+    db.write(SESSION_FILE, session)
 
     return user
 
 
 def get_session():
-    session = read_json(SESSION_FILE, None)
+    session = db.read(SESSION_FILE, None)
     return session
 
 
@@ -79,9 +86,8 @@ def require_login():
 
 
 def _validate_currency(code: str):
-    if not isinstance(code, str) or not code.strip():
-        raise ValueError("currency_code не может быть пустой строкой.")
-    return code.strip().upper()
+    cur = get_currency(code)
+    return cur.code
 
 
 def _validate_amount(amount):
@@ -94,7 +100,7 @@ def _validate_amount(amount):
 
 
 def load_portfolio(user_id: int):
-    portfolios = read_json(PORTFOLIOS_FILE, [])
+    portfolios = db.read(PORTFOLIOS_FILE, [])
     for p in portfolios:
         if int(p["user_id"]) == int(user_id):
             return Portfolio.from_dict(p)
@@ -102,7 +108,7 @@ def load_portfolio(user_id: int):
 
 
 def save_portfolio(portfolio: Portfolio):
-    portfolios = read_json(PORTFOLIOS_FILE, [])
+    portfolios = db.read(PORTFOLIOS_FILE, [])
     updated = False
     for i in range(len(portfolios)):
         if int(portfolios[i]["user_id"]) == int(portfolio.user_id):
@@ -111,14 +117,21 @@ def save_portfolio(portfolio: Portfolio):
             break
     if not updated:
         portfolios.append(portfolio.to_dict())
-    write_json(PORTFOLIOS_FILE, portfolios)
+    db.write(PORTFOLIOS_FILE, portfolios)
 
 
-def get_rate(from_currency: str, to_currency: str):
+@log_action("GET_RATE")
+def get_rate(from_currency: str, to_currency: str, _log=None):
     frm = _validate_currency(from_currency)
     to = _validate_currency(to_currency)
 
-    rates = read_json("rates.json", {})
+    if _log is not None:
+        _log["currency"] = f"{frm}_{to}"
+        _log["amount"] = "-"
+        _log["rate"] = "-"
+        _log["base"] = "-"
+
+    rates = db.read("rates.json", {})
     pair = f"{frm}_{to}"
     rev_pair = f"{to}_{frm}"
 
@@ -126,18 +139,35 @@ def get_rate(from_currency: str, to_currency: str):
     if pair in rates and isinstance(rates[pair], dict):
         rate = float(rates[pair]["rate"])
         updated_at = str(rates[pair]["updated_at"])
+
+        ttl = int(SettingsLoader().get("RATES_TTL_SECONDS", 300))
+        updated_dt = datetime.fromisoformat(updated_at)
+        age = (datetime.now() - updated_dt).total_seconds()
+
+        if age > ttl:
+            raise ApiRequestError(f"курс {frm}-{to} устарел (старше {ttl} сек)")
+
         return rate, updated_at
 
     # обратный курс (если есть BTC_USD, то USD_BTC = 1 / BTC_USD)
     if rev_pair in rates and isinstance(rates[rev_pair], dict):
         rev_rate = float(rates[rev_pair]["rate"])
         if rev_rate == 0:
-            raise ValueError(f"Курс {frm}-{to} недоступен. Повторите попытку позже.")
-        rate = 1.0 / rev_rate
+            raise ApiRequestError(f"Курс {frm}-{to} недоступен. Повторите попытку позже.")
+        
         updated_at = str(rates[rev_pair]["updated_at"])
+
+        ttl = int(SettingsLoader().get("RATES_TTL_SECONDS", 300))
+        updated_dt = datetime.fromisoformat(updated_at)
+        age = (datetime.now() - updated_dt).total_seconds()
+
+        if age > ttl:
+            raise ApiRequestError(f"курс {frm}-{to} устарел (старше {ttl} сек)")
+        
+        rate = 1.0 / rev_rate
         return rate, updated_at
 
-    raise ValueError(f"Не удалось получить курс для {frm}-{to}")
+    raise ApiRequestError(f"Не удалось получить курс для {frm}-{to}")
 
 
 def show_portfolio(base: str = "USD"):
@@ -172,7 +202,8 @@ def show_portfolio(base: str = "USD"):
     return "\n".join(lines)
 
 
-def buy(currency: str, amount: float, base: str = "USD"):
+@log_action("BUY")
+def buy(currency: str, amount: float, base: str = "USD", _log=None):
     session = require_login()
     cur = _validate_currency(currency)
     base_cur = _validate_currency(base)
@@ -191,6 +222,14 @@ def buy(currency: str, amount: float, base: str = "USD"):
     after = wallet.balance
 
     rate, _ts = get_rate(cur, base_cur)
+
+    if _log is not None:
+        _log["username"] = session["username"]
+        _log["currency"] = cur
+        _log["amount"] = f"{amount:.4f}"
+        _log["rate"] = f"{rate:.2f}"
+        _log["base"] = base_cur
+
     cost = amount * rate
 
     save_portfolio(portfolio)
@@ -203,7 +242,8 @@ def buy(currency: str, amount: float, base: str = "USD"):
     )
 
 
-def sell(currency: str, amount: float, base: str = "USD"):
+@log_action("SELL")
+def sell(currency: str, amount: float, base: str = "USD", _log=None):
     session = require_login()
     cur = _validate_currency(currency)
     base_cur = _validate_currency(base)
@@ -213,7 +253,7 @@ def sell(currency: str, amount: float, base: str = "USD"):
     portfolio = load_portfolio(user_id)
 
     if cur not in portfolio.wallets:
-        raise ValueError(
+        raise WalletNotFoundError(
             f"У вас нет кошелька '{cur}'. Добавьте валюту: она создаётся автоматически при первой покупке."
         )
 
@@ -221,12 +261,22 @@ def sell(currency: str, amount: float, base: str = "USD"):
     before = wallet.balance
 
     if amount > before:
-        raise ValueError(f"Недостаточно средств: доступно {before:.4f} {cur}, требуется {amount:.4f} {cur}")
+        raise InsufficientFundsError(
+            f"Недостаточно средств: доступно {before:.4f} {cur}, требуется {amount:.4f} {cur}"
+        )
 
     wallet.withdraw(amount)
     after = wallet.balance
 
     rate, _ts = get_rate(cur, base_cur)
+
+    if _log is not None:
+        _log["username"] = session["username"]
+        _log["currency"] = cur
+        _log["amount"] = f"{amount:.4f}"
+        _log["rate"] = f"{rate:.2f}"
+        _log["base"] = base_cur
+
     revenue = amount * rate
 
     save_portfolio(portfolio)
