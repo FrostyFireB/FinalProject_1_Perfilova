@@ -23,6 +23,8 @@ from finalproject_1_perfilova.parser_service.config import get_config
 from finalproject_1_perfilova.parser_service.storage import RatesStorage
 from finalproject_1_perfilova.parser_service.updater import RatesUpdater
 
+from finalproject_1_perfilova.infra.database import DatabaseManager
+
 
 def main():
     setup_logging()
@@ -62,6 +64,12 @@ def main():
     # update-rates
     p_upd = subparsers.add_parser("update-rates")
     p_upd.add_argument("--source", choices=["coingecko", "exchangerate"], required=False)
+
+    # show-rates
+    p_show_rates = subparsers.add_parser("show-rates")
+    p_show_rates.add_argument("--currency", required=False)
+    p_show_rates.add_argument("--top", required=False, type=int)
+    p_show_rates.add_argument("--base", default="USD")
 
     args = parser.parse_args()
 
@@ -111,6 +119,71 @@ def main():
 
             total = updater.run_update()
             print(f"Обновление завершено. Всего обновлено курсов: {total}.")
+
+        elif args.command == "show-rates":
+            db = DatabaseManager()
+            snap = db.read("rates.json", None)
+
+            if not snap or not isinstance(snap, dict) or "pairs" not in snap:
+                print("Локальный кэш курсов пуст. Выполните 'update-rates', чтобы загрузить данные.")
+                return
+
+            pairs = snap.get("pairs", {})
+            last_refresh = snap.get("last_refresh", "-")
+
+            base = (args.base or "USD").strip().upper()
+
+            if base != "USD":
+                base_pair = f"{base}_USD"
+                if base_pair not in pairs:
+                    print(f"База '{base}' недоступна: нет пары {base_pair} в кэше. Сначала обновите курсы.")
+                    return
+                base_usd = float(pairs[base_pair]["rate"])
+                if base_usd == 0:
+                    print(f"База '{base}' недоступна: некорректный курс {base_pair}.")
+                    return
+
+            rows = []
+            for pair, info in pairs.items():
+                rate = float(info["rate"])
+                updated_at = info.get("updated_at", "-")
+                source = info.get("source", "-")
+
+                frm, to = pair.split("_", 1)
+
+                if to != "USD":
+                    continue
+
+                if args.currency:
+                    cur = args.currency.strip().upper()
+                    if frm != cur:
+                        continue
+
+                if base == "USD":
+                    shown_pair = f"{frm}_USD"
+                    shown_rate = rate
+                else:
+                    shown_pair = f"{frm}_{base}"
+                    shown_rate = rate / base_usd
+
+                rows.append((shown_pair, shown_rate, source, updated_at))
+
+            if not rows:
+                if args.currency:
+                    print(f"Курс для '{args.currency.strip().upper()}' не найден в кэше.")
+                else:
+                    print("В кэше нет подходящих курсов.")
+                return
+
+            if args.top:
+                rows.sort(key=lambda x: x[1], reverse=True)
+                rows = rows[: args.top]
+            else:
+                rows.sort(key=lambda x: x[0])
+
+            print(f"Курсы (last_refresh={last_refresh}, base={base}):")
+            for pair, r, source, updated_at in rows:
+                print(f"- {pair}: {r:.6f} (source={source}, updated_at={updated_at})")
 
     except InsufficientFundsError as e:
         print(str(e))

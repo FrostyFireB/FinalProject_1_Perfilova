@@ -1,6 +1,3 @@
-from datetime import datetime
-from pathlib import Path
-
 from finalproject_1_perfilova.infra.database import DatabaseManager
 
 
@@ -18,7 +15,23 @@ class RatesStorage:
 
     def append_history(self, records: list[dict]):
         history = self.db.read(self.history_path, [])
-        history.extend(records)
+
+        if not isinstance(history, list):
+            history = []
+
+        existing_ids = set()
+        for item in history:
+            if isinstance(item, dict) and "id" in item:
+                existing_ids.add(item["id"])
+
+        for r in records:
+            if not isinstance(r, dict):
+                continue
+            rid = r.get("id")
+            if rid and rid not in existing_ids:
+                history.append(r)
+                existing_ids.add(rid)
+
         self.db.write(self.history_path, history)
 
     def write_snapshot(self, pairs: dict, last_refresh: str):

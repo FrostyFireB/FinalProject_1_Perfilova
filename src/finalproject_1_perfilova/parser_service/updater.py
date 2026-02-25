@@ -21,9 +21,16 @@ class RatesUpdater:
 
         for client in self.clients:
             name = client.__class__.__name__
+
+            if "CoinGecko" in name:
+                src = "CoinGecko"
+            elif "ExchangeRate" in name:
+                src = "ExchangeRate-API"
+            else:
+                src = name
+
             try:
                 rates = client.fetch_rates()
-                src = "CoinGecko" if "CoinGecko" in name else "ExchangeRate-API"
 
                 count = 0
                 for pair, rate in rates.items():
@@ -31,11 +38,17 @@ class RatesUpdater:
                     count += 1
 
                 logging.info(f"Получение из {src}... OK ({count} курсов)")
+            
             except ApiRequestError as e:
                 errors += 1
-                logging.error(f"Ошибка получения из {name}: {e}")
+                logging.error(f"Ошибка получения из {src}: {e}")
 
-        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        now = (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
 
         history_records = []
