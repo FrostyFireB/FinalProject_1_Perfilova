@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from finalproject_1_perfilova.core.models import User, Portfolio
 from finalproject_1_perfilova.decorators import log_action
@@ -131,7 +131,9 @@ def get_rate(from_currency: str, to_currency: str, _log=None):
         _log["rate"] = "-"
         _log["base"] = "-"
 
-    rates = db.read("rates.json", {})
+    rates_doc = db.read("rates.json", {})
+    rates = rates_doc.get("pairs", rates_doc)
+
     pair = f"{frm}_{to}"
     rev_pair = f"{to}_{frm}"
 
@@ -141,8 +143,8 @@ def get_rate(from_currency: str, to_currency: str, _log=None):
         updated_at = str(rates[pair]["updated_at"])
 
         ttl = int(SettingsLoader().get("RATES_TTL_SECONDS", 300))
-        updated_dt = datetime.fromisoformat(updated_at)
-        age = (datetime.now() - updated_dt).total_seconds()
+        updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - updated_dt).total_seconds()
 
         if age > ttl:
             raise ApiRequestError(f"курс {frm}-{to} устарел (старше {ttl} сек)")
@@ -158,8 +160,8 @@ def get_rate(from_currency: str, to_currency: str, _log=None):
         updated_at = str(rates[rev_pair]["updated_at"])
 
         ttl = int(SettingsLoader().get("RATES_TTL_SECONDS", 300))
-        updated_dt = datetime.fromisoformat(updated_at)
-        age = (datetime.now() - updated_dt).total_seconds()
+        updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - updated_dt).total_seconds()
 
         if age > ttl:
             raise ApiRequestError(f"курс {frm}-{to} устарел (старше {ttl} сек)")

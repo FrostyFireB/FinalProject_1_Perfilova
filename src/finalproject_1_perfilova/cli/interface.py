@@ -22,6 +22,7 @@ from finalproject_1_perfilova.parser_service.api_clients import CoinGeckoClient,
 from finalproject_1_perfilova.parser_service.config import get_config
 from finalproject_1_perfilova.parser_service.storage import RatesStorage
 from finalproject_1_perfilova.parser_service.updater import RatesUpdater
+from finalproject_1_perfilova.parser_service.scheduler import RatesScheduler
 
 from finalproject_1_perfilova.infra.database import DatabaseManager
 
@@ -63,7 +64,20 @@ def main():
 
     # update-rates
     p_upd = subparsers.add_parser("update-rates")
-    p_upd.add_argument("--source", choices=["coingecko", "exchangerate"], required=False)
+    p_upd.add_argument(
+        "--source",
+        choices=("coingecko", "exchangerate", "all"),
+        default="all",
+    )
+
+    # scheduler
+    p_sched = subparsers.add_parser("scheduler")
+    p_sched.add_argument("--interval", type=int, default=300)
+    p_sched.add_argument(
+        "--source",
+        choices=["coingecko", "exchangerate", "all"],
+        default="all",
+    )
 
     # show-rates
     p_show_rates = subparsers.add_parser("show-rates")
@@ -102,23 +116,42 @@ def main():
             )
             print(
                 f"Обратный курс {args.to_cur.upper()}-{args.from_cur.upper()}: "
-                f"{(1.0 / rate):.2f}"
+                f"{(1.0 / rate):.8e}"
             )
 
         elif args.command == "update-rates":
             cfg = get_config()
+            storage = RatesStorage(cfg.RATES_FILE_PATH, cfg.HISTORY_FILE_PATH)
 
             clients = []
-            if args.source in (None, "coingecko"):
-                clients.append(CoinGeckoClient())
-            if args.source in (None, "exchangerate"):
-                clients.append(ExchangeRateApiClient())
+            if args.source in ("coingecko", "all"):
+                clients.append(CoinGeckoClient(cfg=cfg))
+            if args.source in ("exchangerate", "all"):
+                clients.append(ExchangeRateApiClient(cfg=cfg))
 
-            storage = RatesStorage(cfg.RATES_FILE_PATH, cfg.HISTORY_FILE_PATH)
-            updater = RatesUpdater(clients, storage)
+            updater = RatesUpdater(clients=clients, storage=storage)
 
             total = updater.run_update()
             print(f"Обновление завершено. Всего обновлено курсов: {total}.")
+
+        elif args.command == "scheduler":
+            cfg = get_config()
+            storage = RatesStorage(cfg.RATES_FILE_PATH, cfg.HISTORY_FILE_PATH)
+
+            clients = []
+            if args.source in ("coingecko", "all"):
+                clients.append(CoinGeckoClient(cfg=cfg))
+            if args.source in ("exchangerate", "all"):
+                clients.append(ExchangeRateApiClient(cfg=cfg))
+
+            updater = RatesUpdater(clients=clients, storage=storage)
+            scheduler = RatesScheduler(updater)
+
+            print(
+                f"Планировщик запущен (interval={args.interval} сек, source={args.source}). "
+                f"Ctrl+C для остановки."
+            )
+            scheduler.run_forever(interval_seconds=args.interval)
 
         elif args.command == "show-rates":
             db = DatabaseManager()

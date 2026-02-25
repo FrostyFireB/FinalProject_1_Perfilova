@@ -5,22 +5,26 @@ from pathlib import Path
 
 def load_env():
     """
-    Очень простой загрузчик .env
-    читает файл .env из корня проекта и кладёт значения в os.environ,
-    если переменная ещё не задана.
+    Простой загрузчик .env
+    ищет .env в текущей папке запуска и выше (до корня),
+    кладёт значения в os.environ, если переменная ещё не задана.
     """
-    root = Path(__file__).resolve().parents[3]
-    env_file = root / ".env"
-    if not env_file.exists():
+    env_file = None
+    cur = Path.cwd()
+
+    for p in [cur, *cur.parents]:
+        candidate = p / ".env"
+        if candidate.exists():
+            env_file = candidate
+            break
+
+    if env_file is None:
         return
 
     for line in env_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line or line.startswith("#") or "=" not in line:
             continue
-        if "=" not in line:
-            continue
-
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")

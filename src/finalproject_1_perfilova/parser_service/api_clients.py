@@ -20,8 +20,8 @@ class BaseApiClient(ABC):
 
 
 class CoinGeckoClient(BaseApiClient):
-    def __init__(self):
-        self.cfg = get_config()
+    def __init__(self, cfg=None):
+        self.cfg = cfg or get_config()
 
     def fetch_rates(self):
         ids = []
@@ -65,14 +65,16 @@ class CoinGeckoClient(BaseApiClient):
 
 
 class ExchangeRateApiClient(BaseApiClient):
-    def __init__(self):
-        self.cfg = get_config()
+    def __init__(self, cfg=None):
+        self.cfg = cfg or get_config()
         if not self.cfg.EXCHANGERATE_API_KEY:
             raise ApiRequestError("Не задан EXCHANGERATE_API_KEY (проверьте .env)")
 
     def fetch_rates(self):
-        # URL: https://v6.exchangerate-api.com/v6/<KEY>/latest/USD
-        url = f"{self.cfg.EXCHANGERATE_API_URL}/{self.cfg.EXCHANGERATE_API_KEY}/latest/{self.cfg.BASE_FIAT_CURRENCY}"
+        url = (
+            f"{self.cfg.EXCHANGERATE_API_URL}/"
+            f"{self.cfg.EXCHANGERATE_API_KEY}/latest/{self.cfg.BASE_FIAT_CURRENCY}"
+        )
 
         try:
             resp = requests.get(url, timeout=self.cfg.REQUEST_TIMEOUT)
