@@ -18,6 +18,11 @@ from finalproject_1_perfilova.core.exceptions import (
     WalletNotFoundError,
 )
 
+from finalproject_1_perfilova.parser_service.api_clients import CoinGeckoClient, ExchangeRateApiClient
+from finalproject_1_perfilova.parser_service.config import get_config
+from finalproject_1_perfilova.parser_service.storage import RatesStorage
+from finalproject_1_perfilova.parser_service.updater import RatesUpdater
+
 
 def main():
     setup_logging()
@@ -54,6 +59,10 @@ def main():
     p_rate.add_argument("--from", dest="from_cur", required=True)
     p_rate.add_argument("--to", dest="to_cur", required=True)
 
+    # update-rates
+    p_upd = subparsers.add_parser("update-rates")
+    p_upd.add_argument("--source", choices=["coingecko", "exchangerate"], required=False)
+
     args = parser.parse_args()
 
     try:
@@ -87,6 +96,21 @@ def main():
                 f"Обратный курс {args.to_cur.upper()}-{args.from_cur.upper()}: "
                 f"{(1.0 / rate):.2f}"
             )
+
+        elif args.command == "update-rates":
+            cfg = get_config()
+
+            clients = []
+            if args.source in (None, "coingecko"):
+                clients.append(CoinGeckoClient())
+            if args.source in (None, "exchangerate"):
+                clients.append(ExchangeRateApiClient())
+
+            storage = RatesStorage(cfg.RATES_FILE_PATH, cfg.HISTORY_FILE_PATH)
+            updater = RatesUpdater(clients, storage)
+
+            total = updater.run_update()
+            print(f"Обновление завершено. Всего обновлено курсов: {total}.")
 
     except InsufficientFundsError as e:
         print(str(e))

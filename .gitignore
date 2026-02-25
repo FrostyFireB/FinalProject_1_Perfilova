@@ -14,7 +14,7 @@ build/
 .ruff_cache/
 
 # data
-data/session.json
+data/*.json
 
 # logs
 logs/

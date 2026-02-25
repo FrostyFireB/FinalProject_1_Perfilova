@@ -41,8 +41,8 @@ class ParserConfig:
     CRYPTO_CURRENCIES: tuple[str, ...] = ("BTC", "ETH", "SOL")
     CRYPTO_ID_MAP: dict[str, str] = None
 
-    RATES_FILE_PATH: str = "data/rates.json"
-    HISTORY_FILE_PATH: str = "data/exchange_rates.json"
+    RATES_FILE_PATH: str = "rates.json"
+    HISTORY_FILE_PATH: str = "exchange_rates.json"
 
     REQUEST_TIMEOUT: int = 10
 
